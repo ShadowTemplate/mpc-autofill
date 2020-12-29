@@ -1,83 +1,47 @@
+#!/usr/bin/env python3.7
 import sqlite3
-import pickle
 import os.path
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 import time
 import imageio
 import os
 import datetime
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from tqdm import tqdm
-import re
 from to_searchable import to_searchable
-import colorama
+from credentials import drive_client_id, drive_client_secret, drive_refresh_token
+
+
+MY_NAME = 'Alex'
+MY_FULL_NAME = 'Alessandro Longoni'
+DRIVE_TOKEN_URI = 'https://oauth2.googleapis.com/token'
+MY_PROXY_DIR_NAME = 'Commander Staples'
+MY_PROXY_DIR_ID = '<INSERT_ID_HERE>'
+MY_BACK_DIR_NAME = 'Card Backs'
 
 # If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly',
-          'https://www.googleapis.com/auth/drive.readonly']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
 global SOURCES
-SOURCES = {"Chilli_Axe": {"quantity": 0,
-                          "username": "u/Chilli_Axe",
-                          "reddit": "https://www.reddit.com/user/Chilli_Axe/",
-                          "drivelink": "https://drive.google.com/open?id=1CUaOPDZM84dk85Kvp6fGrqZVPDo4jQJo",
-                          "description": "cards rendered at 1200 DPI in Photoshop"},
-           "Chilli_Axe_cardbacks": {"quantity": 0,
-                                    "username": "u/Chilli_Axe",
-                                    "reddit": "https://www.reddit.com/user/Chilli_Axe/",
-                                    "drivelink": "https://drive.google.com/open?id=1CUaOPDZM84dk85Kvp6fGrqZVPDo4jQJo",
-                                    "description": "custom cardbacks rendered at 1200 DPI in Photoshop"},
-           "Proxycommander": {"quantity": 0,
-                              "username": "u/proxycommander",
-                              "reddit": "https://www.reddit.com/user/proxycommander/",
-                              "drivelink": "https://drive.google.com/drive/folders/1z5Xa1qiT5Tbhx4wJH1jQWR74AbkyeZ_R",
-                              "description": "cards rendered at 1200 DPI in Photoshop, including masterpieces and expeditions"},
-           "nofacej_cardbacks": {"quantity": 0,
-                                 "username": "u/nofacej",
-                                 "reddit": "https://www.reddit.com/user/nofacej/",
-                                 "drivelink": "https://drive.google.com/drive/folders/1xbWFU2bXCTit1Nvij2GIuzfTUVRVtf3N",
-                                 "description": "custom cardbacks, in a style based on MTG Arena's wildcards at 310 DPI"},
-           "Bazukii": {"quantity": 0,
-                       "username": "u/Bazukii",
-                       "reddit": "https://www.reddit.com/user/Bazukii/",
-                       "drivelink": "https://drive.google.com/open?id=17whjecbdN1Z463FuEH5Lb7V28qph5pat",
-                       "description": "custom cards rendered at 1220 DPI in Photoshop, in a variety of creative styles"},
-           "hathwellcrisping": {"quantity": 0,
-                                "username": "u/hathwellcrisping",
-                                "reddit": "https://www.reddit.com/user/hathwellcrisping/",
-                                "drivelink": "https://drive.google.com/open?id=1LnLsMSSmNs0TPnSzVuS86O153N_6d7LH",
-                                "description": "cards rendered at 1220 DPI in Photoshop"},
-           "male_MPC": {"quantity": 0,
-                        "username": "u/male_MPC",
-                        "reddit": "https://www.reddit.com/user/hathwellcrisping/",
-                        "drivelink": "https://drive.google.com/open?id=1UipyGTz1HMJ6B3V_uJ-Hs1Aoe1bSZsRn",
-                        "description": "cards rendered in a dark frame with extended art at 300 DPI"},
-           "iDerp69": {"quantity": 0,
-                       "username": "u/iDerp69",
-                       "reddit": "https://www.reddit.com/user/iderp69",
-                       "drivelink": "https://drive.google.com/drive/u/0/folders/0B-S9ADELGMXOM195OUp1VXJpVG8",
-                       "description": "cards in a unique, classicshifted style at 600 DPI"},
-           "Celid_of_the_wind": {"quantity": 0,
-                                 "username": "Celid_of_the_wind",
-                                 "reddit": "https://www.reddit.com/user/Celid_of_the_wind",
-                                 "drivelink": "https://drive.google.com/drive/folders/1bGGJAClFd-FYrSNWPi2QNDt7A5BAVJnq",
-                                 "description": "cards in a style inspired by ASAPproxies"},
-           "MrChow1917": {"quantity": 0,
-                          "username": "u/MrChow1917",
-                          "reddit": "https://www.reddit.com/user/MrChow1917",
-                          "drivelink": "https://drive.google.com/drive/folders/1KkbGl_-quZHZeBpMv6yWk3U-GsM8wkrH?usp=sharing",
-                          "description": "cards in the Dan Mumford Horror Series"},
-           "berndt_toast83": {"quantity": 0,
-                              "username": "u/berndt_toast83",
-                              "reddit": "https://www.reddit.com/user/berndt_toast83",
-                              "drivelink": "https://drive.google.com/open?id=13oOobsLCqbhTM-A0JeWTOT0KJ6UZiDkW",
-                              "description": "Scryfall scans, processed and cleaned to be print-ready at 470 DPI"},
-           "Unknown": {"quantity": 0,
+SOURCES = {
+    MY_NAME: {
+        "quantity": 0,
+        "username": MY_NAME,
+        "reddit": "",
+        "drivelink": "https://drive.google.com/open?id=" + MY_PROXY_DIR_ID,
+        "description": "Virus cards"
+    },
+    MY_NAME + "_cardbacks": {
+        "quantity": 0,
+        "username": MY_NAME,
+        "reddit": "",
+        "drivelink": "https://drive.google.com/open?id=" + MY_PROXY_DIR_ID,
+        "description": "custom cardbacks rendered at 1200 DPI in Photoshop"
+    },
+    "Unknown": {"quantity": 0,
                        "username": "",
                        "reddit": "",
                        "drivelink": "",
@@ -116,12 +80,16 @@ def fill_tables(conn):
     # Call to google drive API
     service = login()
     results = service.files().list(
-        q="mimeType='application/vnd.google-apps.folder' and sharedWithMe=true",
+        q="mimeType='application/vnd.google-apps.folder'",
         fields="files(id, name, parents, driveId)",
         pageSize=1000
     ).execute()
 
     folders = results.get('files', [])
+    print("Folders found: {}".format(len(folders)))
+
+    # Skip some folders as specified
+    folders = [f for f in folders if f['name'] == MY_PROXY_DIR_NAME]
     print("Folders found: {}".format(len(folders)))
 
     queries = []
@@ -134,24 +102,13 @@ def fill_tables(conn):
     c.execute("DELETE FROM cardpicker_card;")
     for queryset in queries:
         for card in queryset:
+            if not card:
+                continue
             c.execute("""INSERT OR REPLACE INTO cardpicker_card VALUES (?,?,?,?,?,?,?)""", card)
     conn.commit()
 
 
 def search_folder(folder, db_datetime):
-    # folders to skip
-    unacceptableFolders = [
-        'Tokens',
-        '3x5 Size',
-        '11. Planechase',
-        '!Chili_Axe Card Backs',
-        '!Card Backs',
-        '[EXTRA] - Card back',
-        '[Update 6/5/18] Legendary Walkers',
-        '[Update: 6/10/18] Redirect & Misc Errata',
-        'Cubes',
-    ]
-
     print("Searching drive: {}".format(folder['name']))
 
     folderList = [folder]
@@ -166,61 +123,58 @@ def search_folder(folder, db_datetime):
         # The next current folder is the 1st element in the folder list
         time.sleep(0.1)
         currFolder = folderList[0]
-        # Skip some folders as specified
-        acceptable = all(x not in currFolder['name'] for x in unacceptableFolders)
-        if acceptable:
-            print("Searching: {}".format(currFolder['name']))
-            folderDict[currFolder['id']] = currFolder['name']
+        print("Searching: {}".format(currFolder['name']))
+        folderDict[currFolder['id']] = currFolder['name']
+        try:
+            parentDict[currFolder['id']] = folderDict[currFolder['parents'][0]]
+        except KeyError:
+            parentDict[currFolder['id']] = ""
+
+        # Search for folders within the current folder
+        while True:
             try:
-                parentDict[currFolder['id']] = folderDict[currFolder['parents'][0]]
-            except KeyError:
-                parentDict[currFolder['id']] = ""
+                results = service.files().list(
+                    q="mimeType='application/vnd.google-apps.folder' and "
+                      "'{}' in parents".format(currFolder['id']),
+                    fields="files(id, name, parents)",
+                    pageSize=500
+                ).execute()
+                folderList += results.get('files', [])
+                break
+            except HttpError:
+                pass
 
-            # Search for folders within the current folder
-            while True:
-                try:
-                    results = service.files().list(
-                        q="mimeType='application/vnd.google-apps.folder' and "
-                          "'{}' in parents".format(currFolder['id']),
-                        fields="files(id, name, parents)",
-                        pageSize=500
-                    ).execute()
-                    folderList += results.get('files', [])
-                    break
-                except HttpError:
-                    pass
+        # Search for images with paging - probably not necessary for folders
+        page_token = None
+        while True:
+            # Search for all images within this folder
+            time.sleep(0.1)
+            try:
+                results = service.files().list(
+                    q="(mimeType contains 'image/png' or "
+                      "mimeType contains 'image/jpg' or "
+                      "mimeType contains 'image/jpeg') and "
+                      "'{}' in parents".format(currFolder['id']),
+                    fields="nextPageToken, "
+                           "files(id, name, trashed, properties, parents, modifiedTime, imageMediaMetadata, owners)",
+                    pageSize=500,
+                    pageToken=page_token
+                ).execute()
+            except HttpError:
+                # TODO: Not pass?
+                pass
 
-            # Search for images with paging - probably not necessary for folders
-            page_token = None
-            while True:
-                # Search for all images within this folder
-                time.sleep(0.1)
-                try:
-                    results = service.files().list(
-                        q="(mimeType contains 'image/png' or "
-                          "mimeType contains 'image/jpg' or "
-                          "mimeType contains 'image/jpeg') and "
-                          "'{}' in parents".format(currFolder['id']),
-                        fields="nextPageToken, "
-                               "files(id, name, trashed, properties, parents, modifiedTime, imageMediaMetadata, owners)",
-                        pageSize=500,
-                        pageToken=page_token
-                    ).execute()
-                except HttpError:
-                    # TODO: Not pass?
-                    pass
+            if len(results['files']) <= 0:
+                break
 
-                if len(results['files']) <= 0:
-                    break
+            print("Found {} image(s)".format(len(results.get('files', []))))
 
-                print("Found {} image(s)".format(len(results.get('files', []))))
+            # Append the retrieved images to the image list
+            imageList += results.get('files', [])
 
-                # Append the retrieved images to the image list
-                imageList += results.get('files', [])
-
-                page_token = results.get('nextPageToken', None)
-                if page_token is None:
-                    break
+            page_token = results.get('nextPageToken', None)
+            if page_token is None:
+                break
         folderList.remove(currFolder)
 
     print("Number of images found: {}".format(len(imageList)))
@@ -251,14 +205,7 @@ def add_card(folderDict, parentDict, folder, db_datetime, item):
         owner = item['owners'][0]['displayName']
 
         folders_sources = {
-            "Jake Rowe": "nofacej_cardbacks",
-            "Bazuki Alters": "Bazukii",
-            "Karlin Courtney": "hathwellcrisping",
-            "Digital Red": "Proxycommander",
-            "Alastair Jack": "male_MPC",
-            "i Derp": "iDerp69",
-            "Trey Kapfer": "MrChow1917",
-            "Tristan DELMAS": "Celid_of_the_wind"
+            MY_FULL_NAME: MY_NAME
         }
 
         scryfall = False
@@ -268,9 +215,9 @@ def add_card(folderDict, parentDict, folder, db_datetime, item):
         if ")" in item['name']:
             priority = 1
         source = "Unknown"
-        if folder['name'] == "Chilli_Axe's MPC Proxies":
-            source = "Chilli_Axe"
-            if folderName == "12. Cardbacks":
+        if folder['name'] == MY_PROXY_DIR_NAME:
+            source = MY_NAME
+            if folderName == MY_BACK_DIR_NAME:
                 if "Black Lotus" in item['name']:
                     priority += 10
                 source += "_cardbacks"
@@ -290,8 +237,8 @@ def add_card(folderDict, parentDict, folder, db_datetime, item):
             SOURCES["berndt_toast83"]["quantity"] += 1
         else:
             SOURCES[source]["quantity"] += 1
-        folder_path = "./../staticroot/cardpicker/" + source
-        # folder_path = "cardpicker/static/cardpicker/" + source
+        # folder_path = "./../staticroot/cardpicker/" + source
+        folder_path = "cardpicker/static/cardpicker/" + source
 
         folder_path = os.path.abspath(folder_path)
 
@@ -352,7 +299,7 @@ def add_sources(conn):
 
     source_ids = list(SOURCES.keys())
     source_ids.remove("Unknown")
-    source_ids.remove("Chilli_Axe_cardbacks")
+    # source_ids.remove("Chilli_Axe_cardbacks")
     for source_id in source_ids:
         c.execute("INSERT OR REPLACE INTO cardpicker_source VALUES (?,?,?,?,?,?)",
                   (source_id,
@@ -365,26 +312,16 @@ def add_sources(conn):
 
 
 def login():
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
+    credentials = Credentials(
+        token=None,
+        refresh_token=drive_refresh_token,
+        token_uri=DRIVE_TOKEN_URI,
+        client_id=drive_client_id,
+        client_secret=drive_client_secret,
+        scopes=SCOPES
+    )
 
-    return build('drive', 'v3', credentials=creds)
+    return build('drive', 'v3', credentials=credentials)
 
 
 if __name__ == "__main__":
@@ -395,4 +332,4 @@ if __name__ == "__main__":
         add_sources(conn)
         print(SOURCES)
         print("Elapsed time: {} minutes.".format((time.time() - t) / 60))
-    input("Finished.")
+    print("Finished.")

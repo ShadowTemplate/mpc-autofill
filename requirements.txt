@@ -1,0 +1,15 @@
+Django==3.1.4
+django-user-agents==0.4.0
+elasticsearch==5.5.3
+django-haystack==3.0b2
+google-api-python-client==1.12.8
+google-auth-httplib2==0.0.4
+google-auth-oauthlib==0.4.2
+django-crispy-forms==1.10.0
+colorama==0.4.4
+webdriver_manager==3.2.2
+selenium==3.141.0
+numpy==1.19.4
+tqdm==4.55.0
+imageio==2.9.0
+pyelasticsearch==1.4.1
